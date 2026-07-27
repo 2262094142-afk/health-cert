@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const PORT = 3456;
+const START_PORT = 3456;
+const MAX_PORT = 3465;
 const BASE_DIR = __dirname;
 const INDEX_PATH = path.join(BASE_DIR, 'index.html');
 const GH_EXE = 'C:/Program Files/GitHub CLI/gh.exe';
@@ -145,13 +146,35 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log('');
-  console.log('  ========================================');
-  console.log('  健康证管理服务已启动');
-  console.log('  ');
-  console.log('  本地地址: http://localhost:' + PORT);
-  console.log('  保存图片: 编辑面板点击"保存修改"');
-  console.log('  ========================================');
-  console.log('');
-});
+function startServer(port) {
+  server.listen(port, () => {
+    console.log('');
+    console.log('  ========================================');
+    console.log('  Health card sync server is running');
+    console.log('  ');
+    console.log('  Local URL: http://localhost:' + port);
+    console.log('  Click "Save" in the edit panel to upload image');
+    console.log('  ========================================');
+    console.log('');
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      const nextPort = port + 1;
+      if (nextPort > MAX_PORT) {
+        console.error('');
+        console.error('  Error: ports ' + START_PORT + '-' + MAX_PORT + ' are all in use.');
+        console.error('  Please close other servers and try again.');
+        console.error('');
+        process.exit(1);
+      }
+      console.log('  Port ' + port + ' is in use, trying ' + nextPort + '...');
+      startServer(nextPort);
+    } else {
+      console.error('  Server error:', err.message);
+      process.exit(1);
+    }
+  });
+}
+
+startServer(START_PORT);
