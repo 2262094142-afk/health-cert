@@ -521,18 +521,21 @@
   <script>
     var ADMIN_PASSWORD = '1234';
 
-    var DEFAULT_DATA = { avatar: '' };
+    // ⬇ 服务器修改此值来更新线上图片，请勿手动修改
+    var DEFAULT_IMAGE = "";
 
     function loadData() {
-      var data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+      // 优先从 localStorage 读取（本地修改后的最新数据）
       try {
         var raw = localStorage.getItem('healthcard_data');
         if (raw) {
           var saved = JSON.parse(raw);
-          if (saved.avatar !== undefined) data.avatar = saved.avatar;
+          if (saved.avatar) return { avatar: saved.avatar };
         }
       } catch(e) {}
-      return data;
+      // 回退到 HTML 内置的 DEFAULT_IMAGE（服务器推送后的数据）
+      if (DEFAULT_IMAGE) return { avatar: DEFAULT_IMAGE };
+      return { avatar: '' };
     }
 
     function saveToStorage(data) {
@@ -581,13 +584,36 @@
 
     function saveData() {
       var previewImg = document.getElementById('avatarPreviewImg');
-      var data = {
-        avatar: previewImg.style.display !== 'none' ? previewImg.src : ''
-      };
+      var avatar = previewImg.style.display !== 'none' ? previewImg.src : '';
+      var data = { avatar: avatar };
+
+      // 1. 保存到 localStorage（本地即时生效）
       saveToStorage(data);
       applyDataToPage(data);
       closeModal();
-      showToast('保存成功！页面已更新');
+
+      // 2. 同步到 GitHub（POST 到本地服务器）
+      if (avatar) {
+        showToast('正在同步到 GitHub Pages...');
+        fetch('http://localhost:3456/api/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: avatar })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+          if (result.ok) {
+            showToast(result.note || '保存成功！图片已同步到 GitHub Pages');
+          } else {
+            showToast('同步失败: ' + (result.error || '未知错误'));
+          }
+        })
+        .catch(function() {
+          showToast('⚠ 本地已保存，但无法连接同步服务。请运行 server.js 后重试');
+        });
+      } else {
+        showToast('请先上传图片');
+      }
     }
 
     function resetData() {
@@ -649,8 +675,10 @@
       qrGenerated = true;
       var container = document.getElementById('qrcode');
       container.innerHTML = '';
+      // 始终指向 GitHub Pages（扫码的人看到的应该是线上版本）
+      var qrUrl = 'https://2262094142-afk.github.io/health-cert/';
       new QRCode(container, {
-        text: window.location.href.split('?')[0],
+        text: qrUrl,
         width: 80,
         height: 80,
         colorDark: '#000000',
