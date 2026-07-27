@@ -5,7 +5,29 @@ const { execSync } = require('child_process');
 
 const START_PORT = 3456;
 const MAX_PORT = 3465;
-const BASE_DIR = __dirname;
+
+// Walk up from __dirname to find a directory containing .git
+function findRepoDir() {
+  let dir = __dirname;
+  // Also resolve symlinks (real path)
+  try { dir = fs.realpathSync(dir); } catch(e) {}
+  while (true) {
+    if (fs.existsSync(path.join(dir, '.git'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+const SERVER_DIR = __dirname;
+const BASE_DIR = findRepoDir();
+if (!BASE_DIR) {
+  console.error('');
+  console.error('  Error: No .git repository found in any parent directory.');
+  console.error('  Please run the script from a folder inside a git repository.');
+  console.error('');
+  process.exit(1);
+}
 const INDEX_PATH = path.join(BASE_DIR, 'index.html');
 const GH_EXE = 'C:/Program Files/GitHub CLI/gh.exe';
 const REPO = '2262094142-afk/health-cert';
@@ -65,12 +87,32 @@ function embedImageInHtml(base64Image) {
 function gitPush() {
   try {
     execSync('git add index.html', { cwd: BASE_DIR, stdio: 'pipe' });
-    execSync('git commit -m "更新正面健康证图片"', { cwd: BASE_DIR, stdio: 'pipe' });
-    execSync(`"${GH_EXE}" auth status`, { cwd: BASE_DIR, stdio: 'pipe' });
-    execSync('git push origin main', { cwd: BASE_DIR, stdio: 'pipe', timeout: 30000 });
+
+    // Check if there are staged changes before commit
+    let hasChanges = false;
+    try {
+      const diff = execSync('git diff --cached --name-only', { cwd: BASE_DIR, encoding: 'utf8' });
+      hasChanges = diff.trim().length > 0;
+    } catch (e) {}
+
+    if (hasChanges) {
+      try {
+        execSync('git commit -m "更新正面健康证图片"', { cwd: BASE_DIR, stdio: 'pipe' });
+      } catch (e) {
+        // If commit still failed, capture full output
+        const stderr = e.stderr ? e.stderr.toString() : '';
+        const stdout = e.stdout ? e.stdout.toString() : '';
+        return { ok: false, error: 'Commit failed: ' + (stderr || stdout || e.message) };
+      }
+    }
+
+    execSync('git push origin main', { cwd: BASE_DIR, stdio: 'pipe', timeout: 60000 });
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e.stderr ? e.stderr.toString() : e.message };
+    const stderr = e.stderr ? e.stderr.toString() : '';
+    const stdout = e.stdout ? e.stdout.toString() : '';
+    const msg = stderr || stdout || e.message || String(e);
+    return { ok: false, error: msg };
   }
 }
 
@@ -152,7 +194,9 @@ function startServer(port) {
     console.log('  ========================================');
     console.log('  Health card sync server is running');
     console.log('  ');
-    console.log('  Local URL: http://localhost:' + port);
+    console.log('  Local URL:    http://localhost:' + port);
+    console.log('  Working dir:  ' + BASE_DIR);
+    console.log('  Server file:  ' + __filename);
     console.log('  Click "Save" in the edit panel to upload image');
     console.log('  ========================================');
     console.log('');
