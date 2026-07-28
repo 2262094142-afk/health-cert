@@ -624,7 +624,7 @@
       var container = document.getElementById('qrcode');
       container.innerHTML = '';
       new QRCode(container, {
-        text: window.location.href.split('?')[0],
+        text: window.location.href.split('?')[0].replace(/\/?$/, '') + '/index.html',
         width: 80,
         height: 80,
         colorDark: '#000000',
